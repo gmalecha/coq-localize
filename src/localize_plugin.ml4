@@ -133,39 +133,29 @@ module Localize = struct
     let x = gather env d [] skip in
     inline env d (List.rev x)
 
+  let tactic (t : Term.constr) (bl : Libnames.global_reference list) 
+      (k : Term.constr -> Tacmach.tactic) : Tacmach.tactic =
+    fun gl ->
+      let env = Tacmach.pf_env gl in
+      let black = List.map Libnames.destConstRef bl in
+      let r = localize env t black in
+      k r gl
+
 end  
 
 let _=Mltop.add_known_module "Localize_plugin"
-
-(**
-let pp_print () =
-  let buf = Buffer.create 4 in 
-  let fmt = Format.formatter_of_buffer buf in 
-  let _ = (Format.fprintf fmt "%a\n%!" Section.print ()) in 
-  (Buffer.contents buf)
-**)
 
 open Tacexpr
 open Tacinterp
 
 TACTIC EXTEND localize
   | ["localize" constr(n)] -> 
-    [
-      fun gl ->
-	let env = Tacmach.pf_env gl in
-	let r = Localize.localize env n [] in 
-	Tactics.exact_check r gl ]
+    [ Localize.tactic n [] (Tactics.exact_check) ]
   | ["localize" constr(n) "as" ident(name) ] -> 
-    [
-      fun gl ->
-	let env = Tacmach.pf_env gl in
-	let r = Localize.localize env n [] in 
-	Tactics.pose_proof (Names.Name name) r gl ]
+    [ Localize.tactic n [] (Tactics.pose_proof (Names.Name name)) ]
   | ["localize" constr(n) "blacklist" "[" reference_list(bl) "]" ] -> 
-    [
-      fun gl ->
-	let env = Tacmach.pf_env gl in
-	let r = Localize.localize env n (List.map Libnames.destConstRef bl) in 
-	Tactics.exact_check r gl ]
+    [ Localize.tactic n bl (Tactics.exact_check) ]
+  | ["localize" constr(n) "blacklist" "[" reference_list(bl) "]" "as" ident(name) ] -> 
+    [ Localize.tactic n bl (Tactics.pose_proof (Names.Name name)) ]
 END;;
 
