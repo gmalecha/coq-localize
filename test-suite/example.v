@@ -10,7 +10,7 @@ Definition bar (n : nat) : nat :=
   foo (foo n).
 
 Definition baz : nat -> nat.
-  localize bar.
+  localize bar blacklist [ foo ].
 Defined.
 
 Theorem baz_is_bar : forall x, baz x = bar x.

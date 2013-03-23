@@ -21,6 +21,7 @@ module Localize = struct
     Typeops.type_of_constant_type e (Environ.constant_type e c)
     
   let gather (e : Environ.env) (d : Term.constr) (ls : Names.constant list) 
+      (skip : Names.constant list)
       : Names.constant list =
     let rec gather (d : Term.constr) (ls : Names.constant list) 
       : Names.constant list =
@@ -40,7 +41,9 @@ module Localize = struct
 	| Term.App (f,args) ->
 	  Array.fold_left (fun a x -> gather x a) (gather f ls) args
 	| Term.Const c ->
-	  if List.exists (fun x -> x = c) ls then
+	  if List.exists (fun x -> x = c) ls 
+	  or List.exists (fun x -> x = c) skip 
+	  then
 	    ls
 	  else
 	    begin
@@ -60,7 +63,7 @@ module Localize = struct
     in
     gather d ls
 
-  let replace (resolve : Names.constant -> int -> int) (d : Term.constr) 
+  let replace (resolve : Names.constant -> int -> Term.constr) (d : Term.constr) 
       : Term.constr =
     let rec replace (off : int) (d : Term.constr) : Term.constr =
       match Term.kind_of_term d with
@@ -80,7 +83,7 @@ module Localize = struct
 	| Term.App (f,args) ->
 	  Term.mkApp (replace off f, Array.map (replace off) args)
 	| Term.Const c ->
-	  Term.mkRel (resolve c off)
+	  resolve c off
 	| Term.Ind _ -> d
 	| Term.Construct _ -> d
 	| Term.Case (a,c,b,arms) ->
@@ -93,7 +96,7 @@ module Localize = struct
     replace 1 d
 
   let inline (env : Environ.env) (d : Term.constr) (ls : Names.constant list) : Term.constr =
-    let rec inline (resolve : Names.constant -> int -> int) 
+    let rec inline (resolve : Names.constant -> int -> Term.constr) 
 	           (rem : Names.constant list) 
 		   (d : Term.constr) : Term.constr =
       match rem with
@@ -103,7 +106,7 @@ module Localize = struct
 	  match get_decl env r with
 	    | Some cbody ->
 	      let rest = 
-		inline (fun v acc -> if v = r then acc 
+		inline (fun v acc -> if v = r then Term.mkRel acc 
 	                             else resolve v (1 + acc))
 	               rem
 	               d
@@ -111,10 +114,11 @@ module Localize = struct
 	      Term.mkLetIn (Names.Anonymous, replace resolve (get_body cbody), get_type env r, rest)
 	    | None -> failwith "couldn't get decl"
     in
-    inline (fun x _ -> failwith ("Not found '" ^ Names.string_of_con x)) ls d
+    inline (fun x _ -> Term.mkConst x) ls d
 
-  let localize (env : Environ.env) (d : Term.constr) : Term.constr =
-    let x = gather env d [] in
+  let localize (env : Environ.env) (d : Term.constr) (skip : Names.constant list) 
+      : Term.constr =
+    let x = gather env d [] skip in
     inline env d (List.rev x)
 
 end  
@@ -137,7 +141,13 @@ TACTIC EXTEND localize
     [
       fun gl ->
 	let env = Tacmach.pf_env gl in
-	let r = Localize.localize env n in 
+	let r = Localize.localize env n [] in 
+	Tactics.exact_check r gl ]
+  | ["localize" constr(n) "blacklist" "[" reference_list(bl) "]" ] -> 
+    [
+      fun gl ->
+	let env = Tacmach.pf_env gl in
+	let r = Localize.localize env n (List.map Libnames.destConstRef bl) in 
 	Tactics.exact_check r gl ]
 END;;
 
