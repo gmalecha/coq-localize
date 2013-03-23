@@ -3,19 +3,16 @@
 
 module Localize = struct
 
-  let get_decl (e : Environ.env) (v : Names.constant)
-      : Declarations.constant_body option =
+  let get_body (e : Environ.env) (v : Names.constant) : Term.constr option =
     try
       let b = Environ.lookup_constant v e in
       if Declarations.is_opaque b then None
-      else Some b
+      else 
+	match Declarations.body_of_constant b with
+	  | Some x -> Some (Declarations.force x)
+	  | None -> None (* failwith ("couldn't get body for '" ^ Names.string_of_con v ^ "'") *)
     with
       | Not_found -> None
-
-  let get_body (cb : Declarations.constant_body) : Term.constr =
-    match Declarations.body_of_constant cb with
-      | Some x -> Declarations.force x
-      | None -> failwith "couldn't get body"
 
   let get_type (e : Environ.env) (c : Names.constant) : Term.types =
     Typeops.type_of_constant_type e (Environ.constant_type e c)
@@ -32,8 +29,8 @@ module Localize = struct
 	| Term.Evar _ -> ls
 	| Term.Var i -> ls
 	| Term.Cast (c,_,_) -> gather c ls
-	| Term.Prod (n,t,b) -> (* forall *)
-	  gather b (gather t ls)
+	| Term.Prod (n,_,b) -> (* forall *)
+	  gather b ls
 	| Term.Lambda (n,_,body) -> (* fun *)
 	  gather body ls
 	| Term.LetIn (_,body,_,c) ->
@@ -47,15 +44,15 @@ module Localize = struct
 	    ls
 	  else
 	    begin
-	      match get_decl e c with
+	      match get_body e c with
 		| None -> ls
-		| Some cb ->
-		  c :: gather (get_body cb) ls
+		| Some body ->
+		  c :: gather body ls
 	    end
 	| Term.Ind i -> ls
 	| Term.Construct _ -> ls
-	| Term.Case (_,c,r,arms) ->
-	  Array.fold_left (fun a x -> gather x a) (gather r (gather c ls)) arms
+	| Term.Case (_,_,c,arms) ->
+	  Array.fold_left (fun a x -> gather x a) (gather c ls) arms
 	| Term.Fix (_,(_,_,ca)) ->
 	  Array.fold_left (fun a x -> gather x a) ls ca
 	| Term.CoFix (i,(_,_,ca)) ->
@@ -87,13 +84,11 @@ module Localize = struct
 	| Term.Ind _ -> d
 	| Term.Construct _ -> d
 	| Term.Case (a,c,b,arms) ->
-	  let binders = a.Term.ci_cstr_ndecls in
 	  Term.mkCase (a,
-		       replace off c,
+		       c,
 		       replace off b,
 		       Array.mapi (fun i c -> 
-			 let patterns = Array.get binders i in
-			 replace (patterns + off) c) arms)
+			 replace (off) c) arms)
 	| Term.Fix (a,(b,c,ca)) ->
 	  let n = Array.length c in
 	  Term.mkFix (a,(b, 
@@ -115,16 +110,16 @@ module Localize = struct
 	| [] -> 
 	  replace resolve d
 	| r :: rem ->
-	  match get_decl env r with
-	    | Some cbody ->
+	  match get_body env r with
+	    | Some body ->
 	      let rest = 
 		inline (fun v acc -> if v = r then Term.mkRel acc 
 	                             else resolve v (1 + acc))
 	               rem
 	               d
 	      in
-	      Term.mkLetIn (Names.Anonymous, replace resolve (get_body cbody), get_type env r, rest)
-	    | None -> failwith "couldn't get decl"
+	      Term.mkLetIn (Names.Anonymous, replace resolve body, get_type env r, rest)
+	    | None -> failwith ("couldn't get body for '" ^ Names.string_of_con r ^ "'")
     in
     inline (fun x _ -> Term.mkConst x) ls d
 
@@ -150,11 +145,11 @@ open Tacinterp
 
 TACTIC EXTEND localize
   | ["localize" constr(n)] -> 
-    [ Localize.tactic n [] (Tactics.exact_check) ]
+    [ Localize.tactic n [] (Tactics.exact_no_check) ]
   | ["localize" constr(n) "as" ident(name) ] -> 
     [ Localize.tactic n [] (Tactics.pose_proof (Names.Name name)) ]
   | ["localize" constr(n) "blacklist" "[" reference_list(bl) "]" ] -> 
-    [ Localize.tactic n bl (Tactics.exact_check) ]
+    [ Localize.tactic n bl (Tactics.exact_no_check) ]
   | ["localize" constr(n) "blacklist" "[" reference_list(bl) "]" "as" ident(name) ] -> 
     [ Localize.tactic n bl (Tactics.pose_proof (Names.Name name)) ]
 END;;

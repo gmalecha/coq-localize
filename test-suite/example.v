@@ -1,7 +1,16 @@
-Require Import String. 
 Add Rec LoadPath "../src/" as Localize.
-Add ML Path "../src/". 
-Declare ML Module "localize_plugin". 
+Require Import Localize. 
+
+Definition pair (n : nat) : nat * nat :=
+  (n, S n).
+
+Definition add_pair (n : nat) : nat :=
+  let '(a,b) := pair n in
+  a + b.
+
+Definition add_pair_local : nat -> nat.
+localize add_pair.
+Defined.
 
 Fixpoint foo (n : nat) (b : nat) : nat :=
   match n with
