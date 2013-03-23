@@ -1,0 +1,15 @@
+An Coq plugin that defines some tactics to localize definitions.
+
+INSTALL
+=================
+
+coq_makefile -f arguments.txt -o Makefile
+make 
+make install
+
+USAGE
+=================
+
+This plugin defines a tactic:
+- [localize t blacklist []] --
+

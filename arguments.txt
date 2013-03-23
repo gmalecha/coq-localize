@@ -1,0 +1,4 @@
+-R src Localize
+src/localize_plugin.ml4
+src/Localize.v
+test-suite/example.v
