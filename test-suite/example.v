@@ -3,14 +3,25 @@ Add Rec LoadPath "../src/" as Localize.
 Add ML Path "../src/". 
 Declare ML Module "localize_plugin". 
 
-Definition foo (n : nat) : nat :=
-  n + 1 - 3.
+Fixpoint foo (n : nat) (b : nat) : nat :=
+  match n with
+    | 0 => b
+    | S n => foo2 n b
+  end
+with foo2 (n : nat) (b : nat) : nat :=
+  match n with
+    | 0 => b
+    | S n => foo n b
+  end.
+
+Fixpoint fact (n : nat) : nat :=
+  foo n n + foo2 n n.  
 
 Definition bar (n : nat) : nat :=
-  foo (foo n).
+  fact (fact n).
 
 Definition baz : nat -> nat.
-  localize bar blacklist [ foo ].
+  localize bar.
 Defined.
 
 Theorem baz_is_bar : forall x, baz x = bar x.

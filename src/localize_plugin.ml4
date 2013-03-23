@@ -30,10 +30,10 @@ module Localize = struct
 	| Term.Meta _
 	| Term.Sort _ 
 	| Term.Evar _ -> ls
-	| Term.Var i -> failwith "Var"
+	| Term.Var i -> ls
 	| Term.Cast (c,_,_) -> gather c ls
-	| Term.Prod (_,_,_) -> (* forall? *)
-	  failwith "Prod"
+	| Term.Prod (n,t,b) -> (* forall *)
+	  gather b (gather t ls)
 	| Term.Lambda (n,_,body) -> (* fun *)
 	  gather body ls
 	| Term.LetIn (_,body,_,c) ->
@@ -54,12 +54,12 @@ module Localize = struct
 	    end
 	| Term.Ind i -> ls
 	| Term.Construct _ -> ls
-	| Term.Case (_,c,_,arms) ->
-	  Array.fold_left (fun a x -> gather x a) (gather c ls) arms
+	| Term.Case (_,c,r,arms) ->
+	  Array.fold_left (fun a x -> gather x a) (gather r (gather c ls)) arms
 	| Term.Fix (_,(_,_,ca)) ->
 	  Array.fold_left (fun a x -> gather x a) ls ca
-	| Term.CoFix _ ->
-	  failwith "CoFix"
+	| Term.CoFix (i,(_,_,ca)) ->
+	  Array.fold_left (fun a x -> gather x a) ls ca
     in
     gather d ls
 
@@ -74,8 +74,8 @@ module Localize = struct
 	| Term.Var i -> d
 	| Term.Cast (c,a,b) -> 
 	  Term.mkCast (replace off c, a, b)
-	| Term.Prod (_,_,_) -> (* forall? *)
-	  failwith "Prod"
+	| Term.Prod (n,a,b) ->
+	  Term.mkProd (n, replace off a, replace (1 + off) b)
 	| Term.Lambda (n,t,body) -> (* fun *)
 	  Term.mkLambda (n, t, replace (1+off) body)
 	| Term.LetIn (a, body, b, c) ->
@@ -87,11 +87,23 @@ module Localize = struct
 	| Term.Ind _ -> d
 	| Term.Construct _ -> d
 	| Term.Case (a,c,b,arms) ->
-	  Term.mkCase (a, replace off c, replace off b, 
-		       Array.map (replace off) arms) (** TODO : this is wrong *)
+	  let binders = a.Term.ci_cstr_ndecls in
+	  Term.mkCase (a,
+		       replace off c,
+		       replace off b,
+		       Array.mapi (fun i c -> 
+			 let patterns = Array.get binders i in
+			 replace (patterns + off) c) arms)
 	| Term.Fix (a,(b,c,ca)) ->
-	  Term.mkFix (a,(b,c, Array.map (replace off) ca))
-	| Term.CoFix _ -> d
+	  let n = Array.length c in
+	  Term.mkFix (a,(b, 
+			 Array.map (replace (n + off)) c,
+			 Array.map (replace (n + off)) ca))
+	| Term.CoFix (a,(b,c,ca)) -> 
+	  let n = Array.length c in
+	  Term.mkCoFix (a,(b, 
+			 Array.map (replace (n + off)) c,
+			 Array.map (replace (n + off)) ca))
     in
     replace 1 d
 
@@ -143,6 +155,12 @@ TACTIC EXTEND localize
 	let env = Tacmach.pf_env gl in
 	let r = Localize.localize env n [] in 
 	Tactics.exact_check r gl ]
+  | ["localize" constr(n) "as" ident(name) ] -> 
+    [
+      fun gl ->
+	let env = Tacmach.pf_env gl in
+	let r = Localize.localize env n [] in 
+	Tactics.pose_proof (Names.Name name) r gl ]
   | ["localize" constr(n) "blacklist" "[" reference_list(bl) "]" ] -> 
     [
       fun gl ->
