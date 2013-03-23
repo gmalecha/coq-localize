@@ -1,6 +1,15 @@
 Add Rec LoadPath "../src/" as Localize.
 Require Import Localize. 
 
+Definition uni (T : Type) (n : T) : T := n.
+
+Definition test_universe : nat * (nat -> nat) :=
+  (uni _ 1, uni _ S).
+
+Goal nat * (nat -> nat).
+localize test_universe.
+Defined.
+
 Definition pair (n : nat) : nat * nat :=
   (n, S n).
 
